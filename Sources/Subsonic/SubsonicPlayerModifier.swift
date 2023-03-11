@@ -16,35 +16,54 @@ import SwiftUI
 /// Attaches sounds to a SwiftUI view so they can play based on some program state.
 public struct SubsonicPlayerModifier: ViewModifier {
     /// Internal class responsible for communicating AVAudioPlayer events back to our SwiftUI modifier.
-    private class PlayerDelegate: NSObject, AVAudioPlayerDelegate {
+    private class PlayerDelegate: NSObject {
         /// The function to be called when a sound has finished playing.
-        var onFinish: ((Bool) -> Void)?
+        var onFinish: (() -> Void)?
+        var onChangeTime: ((CMTime) -> Void)?
+        
+        private var timeObserverToken: Any?
+        
+        init(player: AVPlayer) {
+            super.init()
+            
+            timeObserverToken = player.addPeriodicTimeObserver(
+                forInterval: CMTimeMake(value: 1, timescale: 2),
+                queue: .main) { [weak self] time in
+                    self?.onChangeTime?(time)
+                }
 
-        /// Called by an AVAudioPlayer when it finishes.
-        /// - Parameters:
-        ///   - player: The audio player in question.
-        ///   - flag: Whether playback finished successfully or not.
-        func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-            onFinish?(flag)
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(itemDidFinishPlaying(_:)),
+                name: NSNotification.Name.AVPlayerItemDidPlayToEndTime,
+                object: player.currentItem
+            )
+        }
+        
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+            timeObserverToken = nil
+        }
+        
+        /// Called by an AVPlayer when it finishes.
+        @objc func itemDidFinishPlaying(_ notification: Notification) {
+            onFinish?()
         }
     }
 
     /// The name of the sound file you want to load.
     let sound: String
 
-    /// The bundle containing the sound file. Defaults to the main bundle.
-    var from: Bundle = .main
-
     /// Tracks whether the sound should currently be playing or not.
     @Binding var isPlaying: Bool
 
+    /// Tracks whether the sound playing time
+    @Binding var currentTime: Double
+    @Binding var durationTime: Double
+    
     /// How loud to play this sound relative to other sounds in your app,
     /// specified in the range 0 (no volume) to 1 (maximum volume).
     let volume: Double
-
-    /// How many times to repeat this sound. Specifying 0 here (the default)
-    /// will play the sound only once.
-    let repeatCount: SubsonicController.RepeatCount
 
     /// Whether playback should restart from the beginning each time, or
     /// continue from the last playback point.
@@ -52,7 +71,7 @@ public struct SubsonicPlayerModifier: ViewModifier {
 
     /// Our internal audio player, marked @State to keep it alive when our
     /// modifier is recreated.
-    @State private var audioPlayer: AVAudioPlayer?
+    @State private var audioPlayer: AVPlayer?
 
     /// The delegate for our internal audio player, marked @State to keep it
     /// alive when our modifier is recreated.
@@ -65,19 +84,16 @@ public struct SubsonicPlayerModifier: ViewModifier {
                     // When `playMode` is set to `.reset` we need to make sure
                     // all play requests start at time 0.
                     if playMode == .reset {
-                        audioPlayer?.currentTime = 0
+                        audioPlayer?.seek(to: .zero)
                     }
-
                     audioPlayer?.play()
                 } else {
-                    audioPlayer?.stop()
+                    audioPlayer?.pause()
                 }
             }
             .onAppear(perform: prepareAudio)
             .onChange(of: volume) { _ in updateAudio() }
-            .onChange(of: repeatCount) { _ in updateAudio() }
             .onChange(of: sound) { _ in prepareAudio() }
-            .onChange(of: from) { _ in prepareAudio() }
     }
 
     /// Called to initialize all our audio, either because we're just setting up or
@@ -92,25 +108,33 @@ public struct SubsonicPlayerModifier: ViewModifier {
         // have a little shim: we create a dedicated `PlayerDelegate`
         // class instance that acts as the audio delegate, and forwards
         // its `audioPlayerDidFinishPlaying()` on to us as a callback.
-        audioPlayerDelegate = PlayerDelegate()
 
         // Load the audio player, but *do not* play – playback should
         // only happen when the isPlaying Boolean becomes true.
-        audioPlayer = SubsonicController.shared.prepare(sound: sound, from: from)
-        audioPlayerDelegate?.onFinish = audioFinished
-        audioPlayer?.delegate = audioPlayerDelegate
-
+        audioPlayer = SubsonicController.shared.prepare(sound: sound)
+                
+        if let audioPlayer {
+            audioPlayerDelegate = PlayerDelegate(player: audioPlayer)
+            audioPlayerDelegate?.onFinish = audioFinished
+            audioPlayerDelegate?.onChangeTime = audioTimeChanged
+        }
+        durationTime = audioPlayer?.currentItem?.duration.seconds ?? 0
+        
         updateAudio()
     }
 
     /// Changes the playback parameters for an existing sound.
     private func updateAudio() {
         audioPlayer?.volume = Float(volume)
-        audioPlayer?.numberOfLoops = repeatCount.value
     }
 
     /// Called when our internal player has finished playing, and sets the `isPlaying` Boolean back to false.
-    func audioFinished(_ successfully: Bool) {
+    func audioFinished() {
         isPlaying = false
+    }
+    
+    func audioTimeChanged(time: CMTime) {
+        currentTime = time.seconds
+        durationTime = audioPlayer?.currentItem?.duration.seconds ?? 0
     }
 }

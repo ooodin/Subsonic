@@ -15,30 +15,24 @@ extension View {
     /// Plays a single sound immediately.
     /// - Parameters:
     ///   - sound: The name of the sound file you want to load.
-    ///   - bundle: The bundle containing the sound file. Defaults to the main bundle.
     ///   - volume: How loud to play this sound relative to other sounds in your app,
     ///   specified in the range 0 (no volume) to 1 (maximum volume).
-    ///   - repeatCount: How many times to repeat this sound. Specifying 0 here
-    ///   (the default) will play the sound only once.
-    public func play(sound: String, from bundle: Bundle = .main, volume: Double = 1, repeatCount: SubsonicController.RepeatCount = 0) {
-        SubsonicController.shared.play(sound: sound, from: bundle, volume: volume, repeatCount: repeatCount)
+    public func play(sound: String, volume: Double = 1) {
+        SubsonicController.shared.play(sound: sound, volume: volume)
     }
 
     /// Plays or stops a single sound based on the isPlaying Boolean
     /// - Parameters:
     ///   - sound: The name of the sound file you want to load.
-    ///   - bundle: The bundle containing the sound file. Defaults to the main bundle.
     ///   - isPlaying: A Boolean tracking whether the sound should currently be playing.
     ///   - volume: How loud to play this sound relative to other sounds in your app,
     ///   specified in the range 0 (no volume) to 1 (maximum volume).
-    ///   - repeatCount: How many times to repeat this sound. Specifying 0 here
-    ///   (the default) will play the sound only once.
     ///   - playMode: Whether playback should restart from the beginning each time,
     ///   or continue from the last playback point. Defaults to `.reset`.
     /// - Returns: A new view that plays the sound when isPlaying becomes true.
-    public func sound(_ sound: String, from bundle: Bundle = .main, isPlaying: Binding<Bool>, volume: Double = 1, repeatCount: SubsonicController.RepeatCount = 0, playMode: SubsonicController.PlayMode = .reset) -> some View {
+    public func sound(_ sound: String, isPlaying: Binding<Bool>, currentTime: Binding<Double>, duration: Binding<Double>, volume: Double = 1, playMode: SubsonicController.PlayMode = .reset) -> some View {
         self.modifier(
-            SubsonicPlayerModifier(sound: sound, from: bundle, isPlaying: isPlaying, volume: volume, repeatCount: repeatCount, playMode: playMode)
+            SubsonicPlayerModifier(sound: sound, isPlaying: isPlaying, currentTime: currentTime, durationTime: duration, volume: volume, playMode: playMode)
         )
     }
 
